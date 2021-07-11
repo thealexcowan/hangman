@@ -74,6 +74,85 @@ def get_possible_subwords(word):
     return to_ret
 
 
+def get_max_guesser_EV(picker_strategy, guesses_remaining, EV_dict=None, verbose=False):
+    if guesses_remaining <= 0:
+        return 0.0
+    
+    if EV_dict is None:
+        EV_dict = {}
+
+    word_set = picker_strategy.word_set()
+    EV_dict_key = (frozenset(word_set.copy()), guesses_remaining)
+    if EV_dict_key in EV_dict:
+        if verbose:
+            print ''
+            print ''
+            print 'EV_dict_key:'
+            print EV_dict_key
+            print ''
+            print 'EV_dict:'
+            print EV_dict
+        return EV_dict[EV_dict_key]
+
+    possible_guesses = word_set.get_possible_guesses()
+    normalized_picker_strategy = picker_strategy.normalize(in_place=False)
+    guess_EVs = {}
+    for letter in possible_guesses:
+        letter_EV = 0.0
+
+        mixed_gamestate = MixedGamestate()
+        for (secret_word, prob) in normalized_picker_strategy.items():
+            pure_gamestate = PureGamestate(word_set.copy(), secret_word, guesses_remaining)
+            mixed_gamestate[pure_gamestate] = prob
+
+        if verbose:
+            print ''
+            print ''
+            print 'letter:', letter
+            print ''
+            print 'mixed_gamestate pre guess:'
+            print mixed_gamestate
+        mixed_gamestate.make_guess(letter) # should I clean_dict here?
+        if verbose:
+            print ''
+            print 'mixed_gamestate post guess:'
+            print mixed_gamestate
+
+        for (pure_gamestate, prob) in mixed_gamestate.items():
+            if pure_gamestate.winner() is None:
+                new_word_set = pure_gamestate.word_set.copy()
+                new_picker_strategy = PickerStrategy({word:picker_strategy[word] for word in new_word_set})
+                if verbose:
+                    print ''
+                    print 'calling get_max_guesser_EV'
+                    print 'new_picker_strategy:'
+                    print new_picker_strategy
+                    print 'guesses_remaining:', pure_gamestate.guesses_remaining
+                letter_EV += prob * get_max_guesser_EV(new_picker_strategy, pure_gamestate.guesses_remaining, EV_dict=EV_dict)
+            elif pure_gamestate.winner() == 'picker':
+                letter_EV += 0.0
+            elif pure_gamestate.winner() == 'guesser':
+                letter_EV += prob
+        
+        guess_EVs[letter] = letter_EV
+
+    if verbose:
+        print ''
+        print 'guess_EVs:'
+        print guess_EVs
+
+    EV = max(guess_EVs.values())
+    EV_dict[EV_dict_key] = EV
+    return EV
+
+    
+
+
+###################
+### Convenience ###
+###################
+
+
 def get_most_common_words(filename='10kmostcommonwords'):
     most_common_word_dict = {}
     f = open(filename,'r')
@@ -85,6 +164,13 @@ def get_most_common_words(filename='10kmostcommonwords'):
         most_common_word_dict[word_len].append(line)
     f.close()
     return most_common_word_dict
+
+
+def get_random_picker_strategy(wordset):
+    frequency_dict = {word:random.random() for word in wordset}
+    picker_strategy = PickerStrategy(frequency_dict)
+    picker_strategy.normalize()
+    return picker_strategy
 
 
 
@@ -99,16 +185,28 @@ def get_most_common_words(filename='10kmostcommonwords'):
 
 
 class PDF(dict):
-    #def __init__(self, probabilities={}):
-    #    for key in probabilities:
-    #        self[key] = probabilities[key]
-
+    '''
+    def __repr__(self):
+    def copy(self):
+    def set_dict(self, new_dict):
+    def is_valid(self):
+    def make_valid(self, in_place=True):
+    def normalize(self, in_place=True):
+    def clean(self, in_place=True):
+    def probability_sum(self):
+    '''
 
     def __repr__(self):
-        to_ret = str(self)
+        to_ret = ''
+        items = self.items()
+        items.sort(key = lambda tup: tup[1], reverse=True)
+        for (key, prob) in items:
+            to_ret += str(key) + ': ' + str(round(prob,3)) + '\n'
+        if to_ret:
+            to_ret = to_ret[:-1]
         return to_ret
-
-
+    
+    
     def copy(self):
         new_pdf = PDF(self)
         return new_pdf
@@ -116,9 +214,9 @@ class PDF(dict):
 
     def set_dict(self, new_dict):
         to_del = set(self)
-        for key in self:
+        for key in to_del:
             del self[key]
-
+    
         for key in new_dict:
             self[key] = new_dict[key]
 
@@ -216,6 +314,15 @@ class GuesserStrategy(dict):
 
 
 class WordSet(set):
+    '''
+    def copy(self):
+    def is_valid(self):
+    def remove_letter(self, letter, in_place=True):
+    def require_letter(self, letter, positions, exact=True, in_place=True):
+    def get_possible_guesses(self):
+    def get_possible_visible_wordsets(self, nontrivial_only=True, validate=True):
+    '''
+    
     def copy(self):
         new_word_set = WordSet(self)
         return new_word_set
@@ -333,7 +440,24 @@ class WordSet(set):
     
 class PickerStrategy(PDF):
     '''
-    PDF with word_set keys
+    PDF with keys from a word_set
+
+    From PDF:
+
+    def __repr__(self):
+    def copy(self):
+    def set_dict(self, new_dict):
+    *def is_valid(self):
+    def make_valid(self, in_place=True):
+    def normalize(self, in_place=True):
+    def clean(self, in_place=True):
+    def probability_sum(self):
+
+    New/overridden:
+
+    def is_valid(self, word_set=None):
+    def word_set(self):
+    def EV_vs_guesser_strategy(self, guesser_strategy, num_guesses, word_set=None):
     '''
 
     def is_valid(self, word_set=None):
@@ -346,7 +470,12 @@ class PickerStrategy(PDF):
                     break
         to_ret = pdf_condition and all_words_in_strategy
         return to_ret
-
+    
+    
+    def word_set(self):
+        to_ret = WordSet(self.keys())
+        return to_ret
+    
     
     def EV_vs_guesser_strategy(self, guesser_strategy, num_guesses, word_set=None):
         EV = 1.0 - prob_guesser_wins(guesser_strategy, self, num_guesses, word_set=word_set)
@@ -359,6 +488,20 @@ class PureGamestate:
     # remove_letter, require_letter, and get_possible_guesses just call the WordSet methods, so it'd make sense to me to just inherit those methods, but
     # 1. this class "doesn't feel like" it's just WordSet with extra stuff, and
     # 2. __init__ is kind of confusing for me if I extent WordSet, since I wouldn't be sure how to pass the set of words properly.
+    '''
+    def __init__(self, word_set=WordSet(), secret_word='', guesses_remaining=0):
+    def __repr__(self):
+    def copy(self):
+    def is_valid(self):
+    def is_terminal(self):
+    def make_guess(self, letter, in_place=True):
+    def remove_letter(self, letter, in_place=True):
+    def require_letter(self, letter, positions, in_place=True):
+    def get_possible_guesses(self):
+    def winner(self):
+    def visible_only(self):
+    def get_possible_visible_gamestates(self, require_secret_word=False, nontrivial_only=True, validate=True):    
+    '''
     
     def __init__(self, word_set=WordSet(), secret_word='', guesses_remaining=0):
         self.word_set = word_set
@@ -375,8 +518,8 @@ class PureGamestate:
 
 
     def copy(self):
-        new_gamestate = Gamestate(self.word_set, self.secret_word, self.guesses_remaining)
-        return new_gamestate
+        new_pure_gamestate = PureGamestate(WordSet(self.word_set), self.secret_word, self.guesses_remaining)
+        return new_pure_gamestate
 
 
     def is_valid(self):
@@ -385,23 +528,38 @@ class PureGamestate:
         length_condition = self.word_set.is_valid()
         to_ret = word_condition and guess_condition and length_condition
         return to_ret
+
+
+    def is_terminal(self):
+        '''
+        True iff every possible guess ends the game
+        '''
+        possible_guesses = self.get_possible_guesses()
+        all_end = True
+        for letter in possible_guesses:
+            new_gamestate = self.make_guess(letter, in_place=False)
+            if new_gamestate.winner() is None:
+                all_end = False
+                break
+        return all_end
     
         
-    def make_guess(self, letter, in_place=True):
+    def make_guess(self, letter, in_place=True, no_winner_only=True):
         if not in_place:
             new_gamestate = self.copy()
             new_gamestate.make_guess(letter)
             return new_gamestate
         else:
-            if letter not in self.secret_word:
-                self.guesses_remaining -= 1
-                self.remove_letter(letter)
-            else:
-                positions = set()
-                for pos in range(len(self.secret_word)):
-                    if self.secret_word[pos] == letter:
-                        positions.add(pos)
-                self.require_letter(letter, positions)        
+            if (not no_winner_only) or (self.winner() is None):
+                if letter not in self.secret_word:
+                    self.guesses_remaining -= 1
+                    self.remove_letter(letter)
+                else:
+                    positions = set()
+                    for pos in range(len(self.secret_word)):
+                        if self.secret_word[pos] == letter:
+                            positions.add(pos)
+                    self.require_letter(letter, positions)        
 
     
     def remove_letter(self, letter, in_place=True):
@@ -434,7 +592,9 @@ class PureGamestate:
         no_guesses = (self.guesses_remaining < 1)
         found_word = (len(self.word_set) <= 1)
         if no_guesses and found_word:
-            raise ValueError
+            #raise ValueError
+            # sometimes your last guess can be wrong but give you enough info to deduce the correct word
+            return 'picker'
         if no_guesses:
             return 'picker'
         elif found_word:
@@ -447,8 +607,17 @@ class PureGamestate:
         return (self.word_set, self.guesses_remaining)
 
 
-    def get_possible_visible_gamestates(self, nontrivial_only=True, validate=True):
+    def get_possible_visible_gamestates(self, require_secret_word=False, nontrivial_only=True, validate=True):
+        '''
+        Returns all pairs (subwordset, num_guesses)
+        where subwordset is an element of self.word_set.get_possibile_visible_wordsets,
+        and num_guesses is in range(self.guesses_remaining+1).
+        If require_secret_word, subwordsets which don't contain self.secret_word won't be present.
+        If nontrivial_only, num_guesses won't be 0.
+        '''
         possible_visible_wordsets = self.word_set.get_possible_visible_wordsets(nontrivial_only=nontrivial_only, validate=validate)
+        if require_secret_word:
+            possible_visible_wordsets = [wordset for wordset in possible_visible_wordsets if self.secret_word in wordset]
         if nontrivial_only:
             possible_guesses_remaining = list(range(1,self.guesses_remaining+1))
         else:
@@ -460,8 +629,29 @@ class PureGamestate:
 
 class MixedGamestate(PDF):
     '''
-    PDF + PureGamestate methods
+    From PDF:
+
+    def __repr__(self):
+    *def copy(self):
+    def set_dict(self, new_dict):
+    *def is_valid(self):
+    def make_valid(self, in_place=True):
+    def normalize(self, in_place=True):
+    def clean(self, in_place=True):
+    def probability_sum(self):
+
+    New/overridden:
+
+    def is_valid(self):
+    def make_guess(self, letter, clean_dict=False, in_place=True):
+    def remove_finished_games(self, in_place=True):
+    def apply_guesser_strategy(self, guesser_strategy, in_place=True):
     '''
+
+    def copy(self):
+        new_mixed_gamestate = MixedGamestate(self)
+        return new_mixed_gamestate
+    
 
     def is_valid(self):
         pdf_condition = super(MixedGamestate, self).is_valid()
@@ -487,8 +677,14 @@ class MixedGamestate(PDF):
         else:
             if clean_dict:
                 self.clean()
-            for pure_gamestate in self.gamestate_dict:
-                pure_gamestate.make_guess(letter)
+            new_mixed_gamestate = {}
+            for (pure_gamestate, prob) in self.items():
+                new_pure_gamestate = pure_gamestate.copy()
+                new_pure_gamestate.make_guess(letter, no_winner_only=True)
+                if new_pure_gamestate not in new_mixed_gamestate:
+                    new_mixed_gamestate[new_pure_gamestate] = 0.0
+                new_mixed_gamestate[new_pure_gamestate] += prob
+            self.set_dict(new_mixed_gamestate)
 
 
     def remove_finished_games(self, in_place=True):
@@ -499,7 +695,7 @@ class MixedGamestate(PDF):
         else:
             to_del = set()
             for pure_gamestate in self:
-                if pure_gamestate.winner:
+                if pure_gamestate.winner is not None:
                     to_del.add(pure_gamestate)
             for pure_gamestate in to_del:
                 del self[pure_gamestate]
