@@ -1,7 +1,7 @@
 #!/usr/bin/python -tt
 
 import sys
-from sage.all import *
+#from sage.all import *
 import random
 
 
@@ -19,7 +19,18 @@ EPS = 10**(-10)
 
 
 def main():
-    pass
+    # sample usage
+    num_letters = 4
+    num_guesses = 2
+    num_words = 100
+    
+    word_dict = get_most_common_words(filename='10kmostcommonwords')
+    random_picker_strategy = get_random_picker_strategy(WordSet(word_dict[num_letters][:num_words]))
+    EV = get_max_guesser_EV(random_picker_strategy, num_guesses)
+    print 'Picker strategy:'
+    print random_picker_strategy
+    print ''
+    print 'EV:', EV
 
 
 #################
