@@ -25,54 +25,9 @@ def main():
 #################
 ### Functions ###
 #################
-# find_nash_equilibrium(word_set)
+# get_max_guesser_EV(picker_strategy, guesses_remaining, EV_dict=None, verbose=False)
 # prob_guesser_wins(guesser_strategy, picker_strategy, num_guesses, word_set=None)
-
-
-def find_nash_equilibrium(word_set):
-    pass
-
-
-def prob_guesser_wins(guesser_strategy, picker_strategy, num_guesses, word_set=None):
-    if word_set is None:
-        word_set = set(picker_strategy) # this is a set of the keys
-
-    mixed_gamestate = MixedGamestate({PureGamestate(word_set=word_set, secret_word=word, guesses_remaining=num_guesses):picker_strategy[word] for word in picker_strategy})
-    EV = 0.0
-    while mixed_gamestate:
-        # update the remaining branches
-        mixed_gamestate.apply_guesser_strategy(guesser_strategy)
-        mixed_gamestate.clean()
-
-        # prune the branches that have concluded
-        for pure_gamestate in mixed_gamestate:
-            if pure_gamestate.winner() == 'guesser':
-                EV += mixed_gamestate[pure_gamestate]
-        mixed_gamestate.remove_finished_games()
-        # Important to not normalize
-
-    return EV
-
-
-def get_possible_subwords(word):
-    '''
-    returns a set of strings with '_' denoting unknown letters, and never only some copies of a given letter known,
-    e.g. get_possible_subwords('jazz') = {'____', 'j___', '_a__', '__zz', 'ja__', '_azz', 'j_zz', 'jazz'}
-    '''
-    letters_in_word = frozenset(word)
-    to_ret = {word}
-    to_check = {(word,letters_in_word)}
-    while to_check:
-        (subword, letters_in_subword) = to_check.pop()
-        for letter in letters_in_subword:
-            if letter != '_':
-                new_subword = subword.replace(letter,'_')
-                letters_in_new_subword = set(letters_in_subword)
-                letters_in_new_subword.remove(letter)
-                to_ret.add(new_subword)
-                to_check.add((new_subword,frozenset(letters_in_new_subword)))
-    return to_ret
-
+# get_possible_subwords(word)
 
 def get_max_guesser_EV(picker_strategy, guesses_remaining, EV_dict=None, verbose=False):
     if guesses_remaining <= 0:
@@ -145,7 +100,47 @@ def get_max_guesser_EV(picker_strategy, guesses_remaining, EV_dict=None, verbose
     EV_dict[EV_dict_key] = EV
     return EV
 
-    
+
+def prob_guesser_wins(guesser_strategy, picker_strategy, num_guesses, word_set=None):
+    if word_set is None:
+        word_set = set(picker_strategy) # this is a set of the keys
+
+    mixed_gamestate = MixedGamestate({PureGamestate(word_set=word_set, secret_word=word, guesses_remaining=num_guesses):picker_strategy[word] for word in picker_strategy})
+    EV = 0.0
+    while mixed_gamestate:
+        # update the remaining branches
+        mixed_gamestate.apply_guesser_strategy(guesser_strategy)
+        mixed_gamestate.clean()
+
+        # prune the branches that have concluded
+        for pure_gamestate in mixed_gamestate:
+            if pure_gamestate.winner() == 'guesser':
+                EV += mixed_gamestate[pure_gamestate]
+        mixed_gamestate.remove_finished_games()
+        # Important to not normalize
+
+    return EV
+
+
+def get_possible_subwords(word):
+    '''
+    returns a set of strings with '_' denoting unknown letters, and never only some copies of a given letter known,
+    e.g. get_possible_subwords('jazz') = {'____', 'j___', '_a__', '__zz', 'ja__', '_azz', 'j_zz', 'jazz'}
+    '''
+    letters_in_word = frozenset(word)
+    to_ret = {word}
+    to_check = {(word,letters_in_word)}
+    while to_check:
+        (subword, letters_in_subword) = to_check.pop()
+        for letter in letters_in_subword:
+            if letter != '_':
+                new_subword = subword.replace(letter,'_')
+                letters_in_new_subword = set(letters_in_subword)
+                letters_in_new_subword.remove(letter)
+                to_ret.add(new_subword)
+                to_check.add((new_subword,frozenset(letters_in_new_subword)))
+    return to_ret
+
 
 
 ###################
@@ -433,9 +428,7 @@ class WordSet(set):
             to_ret.append(WordSet(frozen_ws))
         
         return to_ret
-        
 
-        
 
     
 class PickerStrategy(PDF):
